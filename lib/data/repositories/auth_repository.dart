@@ -94,8 +94,10 @@ class AuthRepository {
           final familyResult = await tx.execute(SqlQueries.insertFamily, {
             'family_code': familyCode,
             'family_name': request.familyName.trim(),
+            'address': '${request.city.trim()}, ${request.province.trim()}',
             'city': request.city.trim(),
             'province': request.province.trim(),
+            'postal_code': '',
             'phone': request.phone.trim(),
           });
           final familyId = familyResult.lastInsertID.toInt();

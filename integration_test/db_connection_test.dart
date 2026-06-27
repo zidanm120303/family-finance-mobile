@@ -38,4 +38,77 @@ void main() {
     expect(user.name, 'Budi Pratama');
     expect(user.familyName, 'Keluarga Pratama');
   });
+
+  testWidgets('registers a family against the FlyEnv schema', (_) async {
+    final suffix = DateTime.now().microsecondsSinceEpoch.toString();
+    final repository = AuthRepository();
+    int? userId;
+    int? familyId;
+
+    try {
+      final user = await repository.register(
+        RegisterRequest(
+          name: 'Tes Registrasi',
+          email: 'register.$suffix@example.test',
+          username: 'register_$suffix',
+          phone: '081234567890',
+          password: 'password123',
+          familyName: 'Keluarga Tes $suffix',
+          city: 'Ciamis',
+          province: 'Jawa Barat',
+          roleLabel: 'Ayah',
+        ),
+      );
+      userId = user.id;
+      familyId = user.familyId;
+
+      final result = await MysqlDatabaseService.instance.run((conn) async {
+        final family = await conn.execute(
+          '''
+SELECT address, postal_code
+FROM families
+WHERE id = :family_id
+''',
+          {'family_id': familyId},
+        );
+        final wallets = await conn.execute(
+          'SELECT COUNT(*) AS total FROM wallets WHERE family_id = :family_id',
+          {'family_id': familyId},
+        );
+        final categories = await conn.execute(
+          '''
+SELECT COUNT(*) AS total
+FROM categories
+WHERE family_id = :family_id
+''',
+          {'family_id': familyId},
+        );
+
+        return {
+          'family': family.rows.single.typedAssoc(),
+          'wallets': wallets.rows.single.typedAssoc()['total'],
+          'categories': categories.rows.single.typedAssoc()['total'],
+        };
+      });
+
+      final family = result['family']! as Map<String, dynamic>;
+      expect(family['address'], 'Ciamis, Jawa Barat');
+      expect(family['postal_code'], '');
+      expect(int.parse(result['wallets'].toString()), 1);
+      expect(int.parse(result['categories'].toString()), 14);
+    } finally {
+      if (userId != null && familyId != null) {
+        await MysqlDatabaseService.instance.run((conn) async {
+          await conn.transactional((tx) async {
+            await tx.execute('DELETE FROM users WHERE id = :id', {
+              'id': userId,
+            });
+            await tx.execute('DELETE FROM families WHERE id = :id', {
+              'id': familyId,
+            });
+          });
+        });
+      }
+    }
+  });
 }

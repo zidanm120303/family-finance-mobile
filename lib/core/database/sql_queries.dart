@@ -19,7 +19,7 @@ LIMIT 1
 
   static const insertFamily = '''
 INSERT INTO families (family_code, family_name, address, city, province, postal_code, phone, created_at, updated_at)
-VALUES (:family_code, :family_name, NULL, :city, :province, NULL, :phone, NOW(), NOW())
+VALUES (:family_code, :family_name, :address, :city, :province, :postal_code, :phone, NOW(), NOW())
 ''';
 
   static const insertUser = '''
