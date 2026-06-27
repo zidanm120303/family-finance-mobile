@@ -70,13 +70,27 @@ class AuthRepository {
   }
 
   Future<UserModel> register(RegisterRequest request) async {
+    final createsFamily = request.roleLabel == 'Ayah';
+    final roleName = switch (request.roleLabel) {
+      'Ayah' => 'Kepala Keluarga',
+      'Ibu Rumah Tangga' => 'Ibu',
+      _ => throw const AuthException('Peran keluarga tidak valid.'),
+    };
+    final requestedFamilyName = request.familyName.trim();
+    if (requestedFamilyName.isEmpty) {
+      throw const AuthException('Nama keluarga wajib diisi.');
+    }
+    if (createsFamily &&
+        (request.city.trim().isEmpty || request.province.trim().isEmpty)) {
+      throw const AuthException(
+        'Kota dan provinsi wajib diisi untuk membuat keluarga.',
+      );
+    }
+
     try {
       return await _database.run<UserModel>((conn) async {
         return conn.transactional<UserModel>((tx) async {
           await _ensureRoles(tx);
-          final roleName = request.roleLabel == 'Ayah'
-              ? 'Kepala Keluarga'
-              : 'Ibu';
           final roleResult = await tx.execute(SqlQueries.getRoleId, {
             'role_name': roleName,
           });
@@ -88,19 +102,52 @@ class AuthRepository {
           final roleId = ValueParser.asInt(
             roleResult.rows.first.typedAssoc()['id'],
           );
-          final familyCode =
-              '${request.familyName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase()}-${DateTime.now().millisecondsSinceEpoch}';
+          late final int familyId;
+          late final String familyName;
 
-          final familyResult = await tx.execute(SqlQueries.insertFamily, {
-            'family_code': familyCode,
-            'family_name': request.familyName.trim(),
-            'address': '${request.city.trim()}, ${request.province.trim()}',
-            'city': request.city.trim(),
-            'province': request.province.trim(),
-            'postal_code': '',
-            'phone': request.phone.trim(),
-          });
-          final familyId = familyResult.lastInsertID.toInt();
+          if (createsFamily) {
+            final existingFamily = await tx.execute(
+              SqlQueries.findFamiliesByName,
+              {'family_name': requestedFamilyName},
+            );
+            if (existingFamily.rows.isNotEmpty) {
+              throw const AuthException(
+                'Nama keluarga sudah digunakan. Pilih nama lain.',
+              );
+            }
+            final familyCode =
+                '${requestedFamilyName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase()}-${DateTime.now().millisecondsSinceEpoch}';
+            final familyResult = await tx.execute(SqlQueries.insertFamily, {
+              'family_code': familyCode,
+              'family_name': requestedFamilyName,
+              'address': '${request.city.trim()}, ${request.province.trim()}',
+              'city': request.city.trim(),
+              'province': request.province.trim(),
+              'postal_code': '',
+              'phone': request.phone.trim(),
+            });
+            familyId = familyResult.lastInsertID.toInt();
+            familyName = requestedFamilyName;
+          } else {
+            final familyResult = await tx.execute(
+              SqlQueries.findFamiliesByName,
+              {'family_name': requestedFamilyName},
+            );
+            if (familyResult.rows.isEmpty) {
+              throw const AuthException(
+                'Nama keluarga tidak ditemukan. Pastikan penulisannya sama.',
+              );
+            }
+            if (familyResult.rows.length > 1) {
+              throw const AuthException(
+                'Nama keluarga digunakan lebih dari satu keluarga.',
+              );
+            }
+            final family = familyResult.rows.single.typedAssoc();
+            familyId = ValueParser.asInt(family['id']);
+            familyName =
+                family['family_name']?.toString() ?? requestedFamilyName;
+          }
 
           final userResult = await tx.execute(SqlQueries.insertUser, {
             'family_id': familyId,
@@ -113,14 +160,16 @@ class AuthRepository {
           });
           final userId = userResult.lastInsertID.toInt();
 
-          await tx.execute(SqlQueries.updateFamilyCreator, {
-            'user_id': userId,
-            'family_id': familyId,
-          });
-          await tx.execute(SqlQueries.insertDefaultWallet, {
-            'family_id': familyId,
-          });
-          await _insertDefaultCategories(tx, familyId);
+          if (createsFamily) {
+            await tx.execute(SqlQueries.updateFamilyCreator, {
+              'user_id': userId,
+              'family_id': familyId,
+            });
+            await tx.execute(SqlQueries.insertDefaultWallet, {
+              'family_id': familyId,
+            });
+            await _insertDefaultCategories(tx, familyId);
+          }
 
           return UserModel(
             id: userId,
@@ -132,7 +181,7 @@ class AuthRepository {
             phone: request.phone.trim(),
             isActive: true,
             roleName: roleName,
-            familyName: request.familyName.trim(),
+            familyName: familyName,
           );
         });
       });

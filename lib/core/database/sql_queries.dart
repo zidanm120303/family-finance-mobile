@@ -17,6 +17,14 @@ LIMIT 1
   static const getRoleId =
       'SELECT id FROM roles WHERE role_name = :role_name LIMIT 1';
 
+  static const findFamiliesByName = '''
+SELECT id, family_name
+FROM families
+WHERE family_name = :family_name
+ORDER BY id ASC
+LIMIT 2
+''';
+
   static const insertFamily = '''
 INSERT INTO families (family_code, family_name, address, city, province, postal_code, phone, created_at, updated_at)
 VALUES (:family_code, :family_name, :address, :city, :province, :postal_code, :phone, NOW(), NOW())

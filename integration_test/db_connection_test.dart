@@ -39,28 +39,66 @@ void main() {
     expect(user.familyName, 'Keluarga Pratama');
   });
 
-  testWidgets('registers a family against the FlyEnv schema', (_) async {
+  testWidgets('creates and joins a family against the FlyEnv schema', (
+    _,
+  ) async {
     final suffix = DateTime.now().microsecondsSinceEpoch.toString();
     final repository = AuthRepository();
-    int? userId;
+    final familyName = 'Keluarga Tes $suffix';
     int? familyId;
 
     try {
-      final user = await repository.register(
+      final father = await repository.register(
         RegisterRequest(
-          name: 'Tes Registrasi',
-          email: 'register.$suffix@example.test',
-          username: 'register_$suffix',
+          name: 'Tes Ayah',
+          email: 'father.$suffix@example.test',
+          username: 'father_$suffix',
           phone: '081234567890',
           password: 'password123',
-          familyName: 'Keluarga Tes $suffix',
+          familyName: familyName,
           city: 'Ciamis',
           province: 'Jawa Barat',
           roleLabel: 'Ayah',
         ),
       );
-      userId = user.id;
-      familyId = user.familyId;
+      familyId = father.familyId;
+
+      await expectLater(
+        repository.register(
+          RegisterRequest(
+            name: 'Tes Ayah Duplikat',
+            email: 'duplicate.$suffix@example.test',
+            username: 'duplicate_$suffix',
+            phone: '081234567892',
+            password: 'password123',
+            familyName: familyName,
+            city: 'Ciamis',
+            province: 'Jawa Barat',
+            roleLabel: 'Ayah',
+          ),
+        ),
+        throwsA(
+          isA<AuthException>().having(
+            (error) => error.message,
+            'message',
+            contains('sudah digunakan'),
+          ),
+        ),
+      );
+
+      final mother = await repository.register(
+        RegisterRequest(
+          name: 'Tes Ibu',
+          email: 'mother.$suffix@example.test',
+          username: 'mother_$suffix',
+          phone: '081234567891',
+          password: 'password123',
+          familyName: familyName,
+          city: '',
+          province: '',
+          roleLabel: 'Ibu Rumah Tangga',
+        ),
+      );
 
       final result = await MysqlDatabaseService.instance.run((conn) async {
         final family = await conn.execute(
@@ -69,6 +107,10 @@ SELECT address, postal_code
 FROM families
 WHERE id = :family_id
 ''',
+          {'family_id': familyId},
+        );
+        final users = await conn.execute(
+          'SELECT COUNT(*) AS total FROM users WHERE family_id = :family_id',
           {'family_id': familyId},
         );
         final wallets = await conn.execute(
@@ -86,29 +128,61 @@ WHERE family_id = :family_id
 
         return {
           'family': family.rows.single.typedAssoc(),
+          'users': users.rows.single.typedAssoc()['total'],
           'wallets': wallets.rows.single.typedAssoc()['total'],
           'categories': categories.rows.single.typedAssoc()['total'],
         };
       });
 
+      expect(mother.familyId, father.familyId);
+      expect(mother.familyName, familyName);
+      expect(mother.roleName, 'Ibu');
       final family = result['family']! as Map<String, dynamic>;
       expect(family['address'], 'Ciamis, Jawa Barat');
       expect(family['postal_code'], '');
+      expect(int.parse(result['users'].toString()), 2);
       expect(int.parse(result['wallets'].toString()), 1);
       expect(int.parse(result['categories'].toString()), 14);
     } finally {
-      if (userId != null && familyId != null) {
+      if (familyId != null) {
         await MysqlDatabaseService.instance.run((conn) async {
           await conn.transactional((tx) async {
-            await tx.execute('DELETE FROM users WHERE id = :id', {
-              'id': userId,
+            await tx.execute('DELETE FROM users WHERE family_id = :family_id', {
+              'family_id': familyId,
             });
-            await tx.execute('DELETE FROM families WHERE id = :id', {
-              'id': familyId,
+            await tx.execute('DELETE FROM families WHERE id = :family_id', {
+              'family_id': familyId,
             });
           });
         });
       }
     }
+  });
+
+  testWidgets('rejects joining an unknown family', (_) async {
+    final suffix = DateTime.now().microsecondsSinceEpoch.toString();
+
+    await expectLater(
+      AuthRepository().register(
+        RegisterRequest(
+          name: 'Tes Ibu',
+          email: 'unknown.$suffix@example.test',
+          username: 'unknown_$suffix',
+          phone: '081234567891',
+          password: 'password123',
+          familyName: 'Keluarga Tidak Ada $suffix',
+          city: '',
+          province: '',
+          roleLabel: 'Ibu Rumah Tangga',
+        ),
+      ),
+      throwsA(
+        isA<AuthException>().having(
+          (error) => error.message,
+          'message',
+          contains('tidak ditemukan'),
+        ),
+      ),
+    );
   });
 }

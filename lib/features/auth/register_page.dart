@@ -58,8 +58,8 @@ class _RegisterPageState extends State<RegisterPage> {
         phone: _phone.text,
         password: _password.text,
         familyName: _familyName.text,
-        city: _city.text,
-        province: _province.text,
+        city: _role == 'Ayah' ? _city.text : '',
+        province: _role == 'Ayah' ? _province.text : '',
         roleLabel: _role,
       ),
     );
@@ -218,31 +218,6 @@ class _RegisterPageState extends State<RegisterPage> {
                             },
                           ),
                           const SizedBox(height: 22),
-                          const _FormTitle('Informasi Keluarga'),
-                          AppTextField(
-                            controller: _familyName,
-                            label: 'Nama Keluarga',
-                            hint: 'Contoh: Keluarga Pratama',
-                            icon: Icons.family_restroom_rounded,
-                            validator: _required('Nama keluarga wajib diisi.'),
-                          ),
-                          const SizedBox(height: 14),
-                          AppTextField(
-                            controller: _city,
-                            label: 'Kota',
-                            hint: 'Contoh: Jakarta Selatan',
-                            icon: Icons.location_city_outlined,
-                            validator: _required('Kota wajib diisi.'),
-                          ),
-                          const SizedBox(height: 14),
-                          AppTextField(
-                            controller: _province,
-                            label: 'Provinsi',
-                            hint: 'Contoh: DKI Jakarta',
-                            icon: Icons.map_outlined,
-                            validator: _required('Provinsi wajib diisi.'),
-                          ),
-                          const SizedBox(height: 22),
                           const _FormTitle('Peran Anda dalam Keluarga'),
                           Row(
                             children: [
@@ -269,12 +244,51 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                             ],
                           ),
+                          const SizedBox(height: 22),
+                          _FormTitle(
+                            _role == 'Ayah'
+                                ? 'Informasi Keluarga Baru'
+                                : 'Bergabung ke Keluarga',
+                          ),
+                          AppTextField(
+                            controller: _familyName,
+                            label: _role == 'Ayah'
+                                ? 'Nama Keluarga'
+                                : 'Nama Keluarga Tujuan',
+                            hint: 'Contoh: Keluarga Pratama',
+                            icon: _role == 'Ayah'
+                                ? Icons.family_restroom_rounded
+                                : Icons.group_add_rounded,
+                            validator: _required('Nama keluarga wajib diisi.'),
+                          ),
+                          if (_role == 'Ayah') ...[
+                            const SizedBox(height: 14),
+                            AppTextField(
+                              controller: _city,
+                              label: 'Kota',
+                              hint: 'Contoh: Jakarta Selatan',
+                              icon: Icons.location_city_outlined,
+                              validator: _required('Kota wajib diisi.'),
+                            ),
+                            const SizedBox(height: 14),
+                            AppTextField(
+                              controller: _province,
+                              label: 'Provinsi',
+                              hint: 'Contoh: DKI Jakarta',
+                              icon: Icons.map_outlined,
+                              validator: _required('Provinsi wajib diisi.'),
+                            ),
+                          ],
                           const SizedBox(height: 24),
                           Consumer<AuthController>(
                             builder: (context, controller, _) {
                               return AppButton(
-                                label: 'Buat Akun & Keluarga',
-                                icon: Icons.arrow_forward_rounded,
+                                label: _role == 'Ayah'
+                                    ? 'Buat Akun & Keluarga'
+                                    : 'Bergabung ke Keluarga',
+                                icon: _role == 'Ayah'
+                                    ? Icons.arrow_forward_rounded
+                                    : Icons.group_add_rounded,
                                 isLoading: controller.isLoading,
                                 onPressed: _submit,
                               );
